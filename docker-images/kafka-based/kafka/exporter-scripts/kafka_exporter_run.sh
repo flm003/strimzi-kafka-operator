@@ -39,6 +39,11 @@ if [ -n "$KAFKA_EXPORTER_LOGGING" ]; then
     loglevel="--verbosity=${KAFKA_EXPORTER_LOGGING}"
 fi
 
+if [ -n "$KAFKA_EXPORTER_ADDITIONAL_CONFIG" ]; then
+    # shellcheck disable=SC2086
+    additionalConfig=$KAFKA_EXPORTER_ADDITIONAL_CONFIG
+fi
+
 # shellcheck disable=SC2027
 version="--kafka.version=\""$KAFKA_EXPORTER_KAFKA_VERSION"\""
 
@@ -61,7 +66,8 @@ $saramaenable \
 $listenaddress \
 $allgroups \
 $loglevel \
-$version
+$version \
+$additionalConfig
 EOT
 
 chmod +x /tmp/run.sh
