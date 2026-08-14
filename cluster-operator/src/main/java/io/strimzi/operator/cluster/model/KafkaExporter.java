@@ -36,9 +36,11 @@ import io.strimzi.operator.cluster.model.securityprofiles.PodSecurityProviderCon
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.ca.Ca;
+import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.plugin.security.profiles.PodSecurityProviderContext;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +76,7 @@ public class KafkaExporter extends AbstractModel {
     protected static final String ENV_VAR_KAFKA_EXPORTER_KAFKA_SERVER = "KAFKA_EXPORTER_KAFKA_SERVER";
     protected static final String ENV_VAR_KAFKA_EXPORTER_ENABLE_SARAMA = "KAFKA_EXPORTER_ENABLE_SARAMA";
     protected static final String ENV_VAR_KAFKA_EXPORTER_OFFSET_SHOW_ALL = "KAFKA_EXPORTER_OFFSET_SHOW_ALL";
+    protected static final String ENV_VAR_KAFKA_EXPORTER_ADDITIONAL_CONFIG = "KAFKA_EXPORTER_ADDITIONAL_CONFIG";
 
     protected static final String CO_ENV_VAR_CUSTOM_KAFKA_EXPORTER_POD_LABELS = "STRIMZI_CUSTOM_KAFKA_EXPORTER_LABELS";
 
@@ -85,6 +88,7 @@ public class KafkaExporter extends AbstractModel {
     protected boolean showAllOffsets;
     /* test */ String exporterLogging;
     protected String canonicalKafkaVersion;
+    protected List<String> additionalConfigOptions;
 
     private DeploymentTemplate templateDeployment;
     private PodTemplate templatePod;
@@ -160,9 +164,34 @@ public class KafkaExporter extends AbstractModel {
 
             result.canonicalKafkaVersion = versions.supportedVersion(kafkaAssembly.getSpec().getKafka().getVersion()).canonicalVersion();
 
+            if (spec.getAdditionalConfigOptions() != null && !spec.getAdditionalConfigOptions().isEmpty()) {
+                validateAdditionalConfigOptions(spec.getAdditionalConfigOptions());
+                result.additionalConfigOptions = spec.getAdditionalConfigOptions();
+            }
+
             return result;
         } else {
             return null;
+        }
+    }
+
+    /**
+     * Validates the additional config options configured by the user against the list of allowed options.
+     * If a not allowed option is found, it raises an InvalidResourceException.
+     *
+     * @param desiredOptions    list of desired options by the user.
+     */
+    private static void validateAdditionalConfigOptions(List<String> desiredOptions) {
+        List<String> allowedOptions = Arrays.asList(
+            KafkaExporterSpec.ALLOWED_CONFIG_OPTIONS.split("\\s*,+\\s*")
+        );
+        List<String> forbiddenOptions = desiredOptions.stream()
+            .map(option -> option.contains("=") ? option.substring(0, option.indexOf("=")) : option)
+            .filter(option -> allowedOptions.stream().noneMatch(option::equals))
+            .toList();
+
+        if (!forbiddenOptions.isEmpty()) {
+            throw new InvalidResourceException(".spec.kafkaExporter.additionalConfigOptions contains forbidden options: " + forbiddenOptions);
         }
     }
 
@@ -242,6 +271,10 @@ public class KafkaExporter extends AbstractModel {
         varList.add(ContainerUtils.createEnvVar(ENV_VAR_KAFKA_EXPORTER_KAFKA_SERVER, KafkaResources.bootstrapServiceName(cluster) + ":" + KafkaCluster.REPLICATION_PORT));
         varList.add(ContainerUtils.createEnvVar(ENV_VAR_KAFKA_EXPORTER_ENABLE_SARAMA, String.valueOf(saramaLoggingEnabled)));
         varList.add(ContainerUtils.createEnvVar(ENV_VAR_KAFKA_EXPORTER_OFFSET_SHOW_ALL, String.valueOf(showAllOffsets)));
+
+        if (additionalConfigOptions != null && !additionalConfigOptions.isEmpty()) {
+            varList.add(ContainerUtils.createEnvVar(ENV_VAR_KAFKA_EXPORTER_ADDITIONAL_CONFIG, String.join(" ", additionalConfigOptions)));
+        }
 
         // Add shared environment variables used for all containers
         varList.addAll(sharedEnvironmentProvider.variables());

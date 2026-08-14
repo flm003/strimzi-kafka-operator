@@ -43,6 +43,7 @@ import io.strimzi.operator.cluster.ResourceUtils;
 import io.strimzi.operator.cluster.TestUtils;
 import io.strimzi.operator.cluster.model.metrics.MetricsModel;
 import io.strimzi.operator.common.Reconciliation;
+import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.platform.KubernetesVersion;
 import org.junit.jupiter.api.AfterAll;
@@ -62,6 +63,7 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class KafkaExporterTest {
     private static final KafkaVersion.Lookup VERSIONS = KafkaVersionTestUtils.getKafkaVersionLookup();
@@ -479,6 +481,94 @@ public class KafkaExporterTest {
         assertThat(dep.getSpec().getTemplate().getSpec().getContainers().get(0).getSecurityContext().getRunAsNonRoot(), is(true));
         assertThat(dep.getSpec().getTemplate().getSpec().getContainers().get(0).getSecurityContext().getSeccompProfile().getType(), is("RuntimeDefault"));
         assertThat(dep.getSpec().getTemplate().getSpec().getContainers().get(0).getSecurityContext().getCapabilities().getDrop(), is(List.of("ALL")));
+    }
+
+    @Test
+    public void testAdditionalConfigOptionsValid() {
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of("--sasl.enabled", "--sasl.mechanism=PLAIN", "--concurrent.enable"))
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        KafkaExporter ke = KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        assertThat(ke.additionalConfigOptions, is(List.of("--sasl.enabled", "--sasl.mechanism=PLAIN", "--concurrent.enable")));
+        
+        List<EnvVar> envVars = ke.getEnvVars();
+        EnvVar additionalConfigVar = envVars.stream()
+                .filter(var -> KafkaExporter.ENV_VAR_KAFKA_EXPORTER_ADDITIONAL_CONFIG.equals(var.getName()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(additionalConfigVar.getValue(), is("--sasl.enabled --sasl.mechanism=PLAIN --concurrent.enable"));
+    }
+
+    @Test
+    public void testAdditionalConfigOptionsEmpty() {
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of())
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        KafkaExporter ke = KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        List<EnvVar> envVars = ke.getEnvVars();
+        assertThat(envVars.stream().noneMatch(var -> KafkaExporter.ENV_VAR_KAFKA_EXPORTER_ADDITIONAL_CONFIG.equals(var.getName())), is(true));
+    }
+
+    @Test
+    public void testAdditionalConfigOptionsForbidden() {
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of("--kafka.server=my-server:9092", "--sasl.enabled"))
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        
+        InvalidResourceException exception = assertThrows(InvalidResourceException.class, () -> {
+            KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+        });
+        
+        assertThat(exception.getMessage().contains(".spec.kafkaExporter.additionalConfigOptions contains forbidden options"), is(true));
+        assertThat(exception.getMessage().contains("--kafka.server"), is(true));
+    }
+
+    @Test
+    public void testAdditionalConfigOptionsNormalization() {
+        // Test that key=value options are normalized (key extracted for validation)
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of("--sasl.mechanism=SCRAM-SHA-512", "--sasl.username=user1"))
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        KafkaExporter ke = KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        assertThat(ke.additionalConfigOptions, is(List.of("--sasl.mechanism=SCRAM-SHA-512", "--sasl.username=user1")));
+    }
+
+    @Test
+    public void testAdditionalConfigOptionsMultipleForbidden() {
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of("--kafka.server=localhost", "--verbosity=2", "--tls.enabled"))
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        
+        InvalidResourceException exception = assertThrows(InvalidResourceException.class, () -> {
+            KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+        });
+        
+        assertThat(exception.getMessage().contains("--kafka.server"), is(true));
+        assertThat(exception.getMessage().contains("--verbosity"), is(true));
+        assertThat(exception.getMessage().contains("--tls.enabled"), is(true));
     }
 
     ////////////////////

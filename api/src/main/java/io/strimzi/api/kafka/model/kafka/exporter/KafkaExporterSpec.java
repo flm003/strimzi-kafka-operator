@@ -19,6 +19,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -33,10 +34,22 @@ import java.util.Map;
     "image", "groupRegex", "topicRegex", 
     "groupExcludeRegex", "topicExcludeRegex",
     "resources", "logging", "livenessProbe", "readinessProbe",
-    "enableSaramaLogging", "showAllOffsets", "template"})
+    "enableSaramaLogging", "showAllOffsets", "additionalConfigOptions", "template"})
 @EqualsAndHashCode
 @ToString
 public class KafkaExporterSpec implements HasLivenessProbe, HasReadinessProbe, UnknownPropertyPreserving {
+    /**
+     * Allowed additional configuration options for Kafka Exporter.
+     * These options will be passed as command-line flags to the kafka_exporter binary.
+     * Operator-owned flags are forbidden to prevent conflicts with managed configuration.
+     */
+    public static final String ALLOWED_CONFIG_OPTIONS = 
+        "--sasl.enabled, --sasl.handshake, --sasl.username, --sasl.password, --sasl.mechanism, --sasl.service-name, " +
+        "--sasl.kerberos-config-path, --sasl.kerberos-keytab-path, --sasl.kerberos-realm, --sasl.kerberos-service-name, " +
+        "--sasl.scram-client-id, --sasl.scram-client-secret, --sasl.token-provider, " +
+        "--use-consumelag-zookeeper, --zookeeper.server, --kafka.labels, --refresh.metadata, --concurrent.enable, " +
+        "--topic.workers, --throttle.factor, --topic.filter-out, --group.filter-out";
+
     private String image;
     private String groupRegex = ".*";
     private String topicRegex = ".*";
@@ -49,6 +62,7 @@ public class KafkaExporterSpec implements HasLivenessProbe, HasReadinessProbe, U
     private String logging = "info";
     private boolean enableSaramaLogging;
     private boolean showAllOffsets = true;
+    private List<String> additionalConfigOptions;
     private KafkaExporterTemplate template;
 
     private Map<String, Object> additionalProperties;
@@ -125,6 +139,22 @@ public class KafkaExporterSpec implements HasLivenessProbe, HasReadinessProbe, U
 
     public void setShowAllOffsets(boolean showAllOffsets) {
         this.showAllOffsets = showAllOffsets;
+    }
+
+    @Description("Additional configuration options for the Kafka Exporter. " +
+            "Allowed options: " + ALLOWED_CONFIG_OPTIONS + ". " +
+            "These options are used to configure advanced features of Kafka Exporter (e.g., SASL authentication, concurrent processing). " +
+            "Operator-owned options (such as `--kafka.server`, `--kafka.version`, `--tls.*` client auth, `--web.listen-address`, " +
+            "`--group.filter`, `--topic.filter`, `--group.exclude`, `--topic.exclude`, `--verbosity`, `--log.enable-sarama`, " +
+            "`--no-offset.show-all`) cannot be overridden as they are managed by the operator. " +
+            "Options that are not on the allowed list will be rejected at reconcile time.")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public List<String> getAdditionalConfigOptions() {
+        return additionalConfigOptions;
+    }
+
+    public void setAdditionalConfigOptions(List<String> additionalConfigOptions) {
+        this.additionalConfigOptions = additionalConfigOptions;
     }
 
     @Description("Only log messages with the given severity or above. " +
