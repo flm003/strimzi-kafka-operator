@@ -73,6 +73,29 @@ public class ProbeUtils {
     }
 
     /**
+     * Creates HTTPS based probe
+     *
+     * @param probeConfig   Probe configuration
+     * @param path          Path which should be checked
+     * @param port          Port which should be used
+     *
+     * @return  Kubernetes Probe
+     */
+    public static Probe httpsProbe(StrimziProbe probeConfig, String path, String port) {
+        if (path == null || path.isEmpty() || port == null || port.isEmpty()) {
+            throw new IllegalArgumentException();
+        }
+
+        return defaultBuilder(probeConfig)
+                .withNewHttpGet()
+                    .withPath(path)
+                    .withNewPort(port)
+                    .withScheme("HTTPS")
+                .endHttpGet()
+                .build();
+    }
+
+    /**
      * Creates Exec based probe
      *
      * @param probeConfig   Probe configuration

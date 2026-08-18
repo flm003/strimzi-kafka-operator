@@ -91,6 +91,36 @@ public class ProbeUtilsTest {
     }
 
     @Test
+    public void testHttpsProbe() {
+        Probe probe = ProbeUtils.httpsProbe(DEFAULT_CONFIG, "path", "1001");
+        assertThat(probe, is(new ProbeBuilder()
+                .withNewHttpGet()
+                    .withPath("path")
+                    .withNewPort("1001")
+                    .withScheme("HTTPS")
+                .endHttpGet()
+                .withInitialDelaySeconds(1)
+                .withTimeoutSeconds(2)
+                .withPeriodSeconds(3)
+                .withSuccessThreshold(4)
+                .withFailureThreshold(5)
+                .build()
+        ));
+    }
+
+    @Test
+    public void testHttpsProbeMissingPathThrows() {
+        assertThrows(IllegalArgumentException.class, () -> ProbeUtils.httpsProbe(DEFAULT_CONFIG, null, "1001"));
+        assertThrows(IllegalArgumentException.class, () -> ProbeUtils.httpsProbe(DEFAULT_CONFIG, "", "1001"));
+    }
+
+    @Test
+    public void testHttpsProbeMissingPortThrows() {
+        assertThrows(IllegalArgumentException.class, () -> ProbeUtils.httpsProbe(DEFAULT_CONFIG, "path", null));
+        assertThrows(IllegalArgumentException.class, () -> ProbeUtils.httpsProbe(DEFAULT_CONFIG, "path", ""));
+    }
+
+    @Test
     public void testExecProbe() {
         Probe probe = ProbeUtils.execProbe(DEFAULT_CONFIG, Arrays.asList("command1", "command2"));
         assertThat(probe, is(new ProbeBuilder()

@@ -48,7 +48,8 @@ public class KafkaExporterSpec implements HasLivenessProbe, HasReadinessProbe, U
         "--sasl.kerberos-config-path, --sasl.kerberos-keytab-path, --sasl.kerberos-realm, --sasl.kerberos-service-name, " +
         "--sasl.scram-client-id, --sasl.scram-client-secret, --sasl.token-provider, " +
         "--use-consumelag-zookeeper, --zookeeper.server, --kafka.labels, --refresh.metadata, --concurrent.enable, " +
-        "--topic.workers, --throttle.factor, --topic.filter-out, --group.filter-out";
+        "--topic.workers, --throttle.factor, --topic.filter-out, --group.filter-out, " +
+        "--tls.server.enabled, --tls.server.cert-file, --tls.server.key-file, --tls.server.mutual-tls-ca-file";
 
     private String image;
     private String groupRegex = ".*";
@@ -143,8 +144,8 @@ public class KafkaExporterSpec implements HasLivenessProbe, HasReadinessProbe, U
 
     @Description("Additional configuration options for the Kafka Exporter. " +
             "Allowed options: " + ALLOWED_CONFIG_OPTIONS + ". " +
-            "These options are used to configure advanced features of Kafka Exporter (e.g., SASL authentication, concurrent processing). " +
-            "Operator-owned options (such as `--kafka.server`, `--kafka.version`, `--tls.*` client auth, `--web.listen-address`, " +
+            "These options are used to configure advanced features of Kafka Exporter (e.g., SASL authentication, concurrent processing, web endpoint TLS). " +
+            "Operator-owned options (such as `--kafka.server`, `--kafka.version`, `--tls.*` client auth (excluding `--tls.server.*`), `--web.listen-address`, " +
             "`--group.filter`, `--topic.filter`, `--group.exclude`, `--topic.exclude`, `--verbosity`, `--log.enable-sarama`, " +
             "`--no-offset.show-all`) cannot be overridden as they are managed by the operator. " +
             "Options that are not on the allowed list will be rejected at reconcile time.")

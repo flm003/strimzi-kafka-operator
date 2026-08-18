@@ -571,6 +571,108 @@ public class KafkaExporterTest {
         assertThat(exception.getMessage().contains("--tls.enabled"), is(true));
     }
 
+    @Test
+    public void testWebTlsEnabledWithTlsServerEnabled() {
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of("--tls.server.enabled", "--tls.server.cert-file=/certs/server.crt", "--tls.server.key-file=/certs/server.key"))
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        KafkaExporter ke = KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        Container container = ke.createContainer(null);
+        
+        // Verify HTTPS scheme is used for both probes
+        assertThat(container.getLivenessProbe().getHttpGet().getScheme(), is("HTTPS"));
+        assertThat(container.getLivenessProbe().getHttpGet().getPath(), is("/healthz"));
+        assertThat(container.getLivenessProbe().getHttpGet().getPort(), is(new IntOrString(MetricsModel.METRICS_PORT_NAME)));
+        
+        assertThat(container.getReadinessProbe().getHttpGet().getScheme(), is("HTTPS"));
+        assertThat(container.getReadinessProbe().getHttpGet().getPath(), is("/healthz"));
+        assertThat(container.getReadinessProbe().getHttpGet().getPort(), is(new IntOrString(MetricsModel.METRICS_PORT_NAME)));
+    }
+
+    @Test
+    public void testWebTlsEnabledWithCertFile() {
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of("--tls.server.cert-file=/certs/server.crt", "--tls.server.key-file=/certs/server.key"))
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        KafkaExporter ke = KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        Container container = ke.createContainer(null);
+        
+        // Verify HTTPS scheme is used for both probes
+        assertThat(container.getLivenessProbe().getHttpGet().getScheme(), is("HTTPS"));
+        assertThat(container.getReadinessProbe().getHttpGet().getScheme(), is("HTTPS"));
+    }
+
+    @Test
+    public void testWebTlsDisabledWithoutTlsServerFlags() {
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of("--sasl.enabled", "--concurrent.enable"))
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        KafkaExporter ke = KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        Container container = ke.createContainer(null);
+        
+        // Verify HTTP scheme is used (no scheme means HTTP in Kubernetes)
+        assertThat(container.getLivenessProbe().getHttpGet().getScheme(), is(nullValue()));
+        assertThat(container.getReadinessProbe().getHttpGet().getScheme(), is(nullValue()));
+    }
+
+    @Test
+    public void testWebTlsDisabledWithNoAdditionalConfig() {
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        KafkaExporter ke = KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+
+        Container container = ke.createContainer(null);
+        
+        // Verify HTTP scheme is used (no scheme means HTTP in Kubernetes)
+        assertThat(container.getLivenessProbe().getHttpGet().getScheme(), is(nullValue()));
+        assertThat(container.getReadinessProbe().getHttpGet().getScheme(), is(nullValue()));
+    }
+
+    @Test
+    public void testWebTlsFlagsAllowedByAllowlist() {
+        // Test that web-TLS flags are accepted by the allowlist
+        Kafka resource = new KafkaBuilder(KAFKA)
+                .editSpec()
+                    .editKafkaExporter()
+                        .withAdditionalConfigOptions(List.of(
+                            "--tls.server.enabled",
+                            "--tls.server.cert-file=/certs/server.crt",
+                            "--tls.server.key-file=/certs/server.key",
+                            "--tls.server.mutual-tls-ca-file=/certs/ca.crt"
+                        ))
+                    .endKafkaExporter()
+                .endSpec()
+                .build();
+        
+        // Should not throw an exception
+        KafkaExporter ke = KafkaExporter.fromCrd(new Reconciliation("test", resource.getKind(), resource.getMetadata().getNamespace(), resource.getMetadata().getName()), resource, VERSIONS, SHARED_ENV_PROVIDER);
+        assertThat(ke.additionalConfigOptions, is(List.of(
+            "--tls.server.enabled",
+            "--tls.server.cert-file=/certs/server.crt",
+            "--tls.server.key-file=/certs/server.key",
+            "--tls.server.mutual-tls-ca-file=/certs/ca.crt"
+        )));
+    }
+
     ////////////////////
     // Utility methods
     ////////////////////

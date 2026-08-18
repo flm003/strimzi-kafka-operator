@@ -89,6 +89,7 @@ public class KafkaExporter extends AbstractModel {
     /* test */ String exporterLogging;
     protected String canonicalKafkaVersion;
     protected List<String> additionalConfigOptions;
+    private boolean serverTlsEnabled;
 
     private DeploymentTemplate templateDeployment;
     private PodTemplate templatePod;
@@ -167,6 +168,12 @@ public class KafkaExporter extends AbstractModel {
             if (spec.getAdditionalConfigOptions() != null && !spec.getAdditionalConfigOptions().isEmpty()) {
                 validateAdditionalConfigOptions(spec.getAdditionalConfigOptions());
                 result.additionalConfigOptions = spec.getAdditionalConfigOptions();
+                
+                // Detect web endpoint TLS enablement
+                result.serverTlsEnabled = spec.getAdditionalConfigOptions().stream()
+                    .anyMatch(option -> option.startsWith("--tls.server.enabled") || 
+                                       option.startsWith("--tls.server.cert-file") || 
+                                       option.startsWith("--tls.server.key-file"));
             }
 
             return result;
@@ -249,8 +256,8 @@ public class KafkaExporter extends AbstractModel {
                 getEnvVars(),
                 getContainerPortList(),
                 getVolumeMounts(),
-                ProbeUtils.httpProbe(livenessProbeOptions, "/healthz", MetricsModel.METRICS_PORT_NAME),
-                ProbeUtils.httpProbe(readinessProbeOptions, "/healthz", MetricsModel.METRICS_PORT_NAME),
+                serverTlsEnabled ? ProbeUtils.httpsProbe(livenessProbeOptions, "/healthz", MetricsModel.METRICS_PORT_NAME) : ProbeUtils.httpProbe(livenessProbeOptions, "/healthz", MetricsModel.METRICS_PORT_NAME),
+                serverTlsEnabled ? ProbeUtils.httpsProbe(readinessProbeOptions, "/healthz", MetricsModel.METRICS_PORT_NAME) : ProbeUtils.httpProbe(readinessProbeOptions, "/healthz", MetricsModel.METRICS_PORT_NAME),
                 imagePullPolicy
         );
     }
